@@ -18,9 +18,9 @@ use graph::prelude::{
 };
 use graph_chain_ethereum::{EthereumAdapterTrait, EthereumNetworks};
 
-use crate::gas::Gas;
 use crate::mapping::{MappingContext, MappingRequest};
 use crate::{host_exports::HostExports, module::ExperimentalFeatures};
+use graph::runtime::gas::Gas;
 
 lazy_static! {
     static ref TIMEOUT: Option<Duration> = std::env::var("GRAPH_MAPPING_HANDLER_TIMEOUT")
