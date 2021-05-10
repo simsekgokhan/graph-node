@@ -13,7 +13,7 @@ use std::str::FromStr;
 use std::sync::Arc;
 
 use graph::{
-    components::store::EntityType,
+    components::store::{ColumnNames, EntityType},
     data::store::scalar::{BigDecimal, BigInt, Bytes},
 };
 use graph_store_postgres::{
@@ -683,7 +683,7 @@ fn count_scalar_entities(conn: &PgConnection, layout: &Layout) -> usize {
         EntityFilter::Equal("bool".into(), true.into()),
         EntityFilter::Equal("bool".into(), false.into()),
     ]);
-    let collection = EntityCollection::All(vec![SCALAR.to_owned()]);
+    let collection = EntityCollection::All(vec![(SCALAR.to_owned(), ColumnNames::All)]);
     layout
         .query::<Entity>(
             &*LOGGER,
@@ -873,7 +873,12 @@ fn query(entity_types: Vec<&str>) -> EntityQuery {
     EntityQuery::new(
         THINGS_SUBGRAPH_ID.clone(),
         BLOCK_NUMBER_MAX,
-        EntityCollection::All(entity_types.into_iter().map(EntityType::from).collect()),
+        EntityCollection::All(
+            entity_types
+                .into_iter()
+                .map(|entity_type| (EntityType::from(entity_type), ColumnNames::All))
+                .collect(),
+        ),
     )
 }
 

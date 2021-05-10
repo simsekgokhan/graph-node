@@ -436,11 +436,12 @@ mod tests {
                 &default_arguments(),
                 &BTreeMap::new(),
                 std::u32::MAX,
-                std::u32::MAX
+                std::u32::MAX,
+                Default::default()
             )
             .unwrap()
             .collection,
-            EntityCollection::All(vec![EntityType::from("Entity1")])
+            EntityCollection::All(vec![(EntityType::from("Entity1"), ColumnNames::All)])
         );
         assert_eq!(
             build_query(
@@ -449,11 +450,12 @@ mod tests {
                 &default_arguments(),
                 &BTreeMap::new(),
                 std::u32::MAX,
-                std::u32::MAX
+                std::u32::MAX,
+                Default::default()
             )
             .unwrap()
             .collection,
-            EntityCollection::All(vec![EntityType::from("Entity2")])
+            EntityCollection::All(vec![(EntityType::from("Entity2"), ColumnNames::All)])
         );
     }
 
@@ -466,7 +468,8 @@ mod tests {
                 &default_arguments(),
                 &BTreeMap::new(),
                 std::u32::MAX,
-                std::u32::MAX
+                std::u32::MAX,
+                Default::default()
             )
             .unwrap()
             .order,
@@ -486,7 +489,8 @@ mod tests {
                 &args,
                 &BTreeMap::new(),
                 std::u32::MAX,
-                std::u32::MAX
+                std::u32::MAX,
+                Default::default()
             )
             .unwrap()
             .order,
@@ -502,7 +506,8 @@ mod tests {
                 &args,
                 &BTreeMap::new(),
                 std::u32::MAX,
-                std::u32::MAX
+                std::u32::MAX,
+                Default::default()
             )
             .unwrap()
             .order,
@@ -522,7 +527,8 @@ mod tests {
                 &args,
                 &BTreeMap::new(),
                 std::u32::MAX,
-                std::u32::MAX
+                std::u32::MAX,
+                Default::default()
             )
             .unwrap()
             .order,
@@ -538,7 +544,8 @@ mod tests {
                 &args,
                 &BTreeMap::new(),
                 std::u32::MAX,
-                std::u32::MAX
+                std::u32::MAX,
+                Default::default()
             )
             .unwrap()
             .order,
@@ -560,7 +567,8 @@ mod tests {
                 &args,
                 &BTreeMap::new(),
                 std::u32::MAX,
-                std::u32::MAX
+                std::u32::MAX,
+                Default::default()
             )
             .unwrap()
             .order,
@@ -577,7 +585,8 @@ mod tests {
                 &args,
                 &BTreeMap::new(),
                 std::u32::MAX,
-                std::u32::MAX
+                std::u32::MAX,
+                Default::default()
             )
             .unwrap()
             .order,
@@ -597,7 +606,8 @@ mod tests {
                 &args,
                 &BTreeMap::new(),
                 std::u32::MAX,
-                std::u32::MAX
+                std::u32::MAX,
+                Default::default()
             )
             .unwrap()
             .order,
@@ -617,7 +627,8 @@ mod tests {
                 &args,
                 &BTreeMap::new(),
                 std::u32::MAX,
-                std::u32::MAX
+                std::u32::MAX,
+                Default::default()
             )
             .unwrap()
             .order,
@@ -639,7 +650,8 @@ mod tests {
                 &args,
                 &BTreeMap::new(),
                 std::u32::MAX,
-                std::u32::MAX
+                std::u32::MAX,
+                Default::default()
             )
             .unwrap()
             .order,
@@ -656,7 +668,8 @@ mod tests {
                 &args,
                 &BTreeMap::new(),
                 std::u32::MAX,
-                std::u32::MAX
+                std::u32::MAX,
+                Default::default()
             )
             .unwrap()
             .order,
@@ -673,7 +686,8 @@ mod tests {
                 &default_arguments(),
                 &BTreeMap::new(),
                 std::u32::MAX,
-                std::u32::MAX
+                std::u32::MAX,
+                Default::default()
             )
             .unwrap()
             .range,
@@ -693,7 +707,8 @@ mod tests {
                 &args,
                 &BTreeMap::new(),
                 std::u32::MAX,
-                std::u32::MAX
+                std::u32::MAX,
+                Default::default()
             )
             .unwrap()
             .range,
@@ -726,6 +741,7 @@ mod tests {
                 &BTreeMap::new(),
                 std::u32::MAX,
                 std::u32::MAX,
+                Default::default()
             )
             .unwrap()
             .filter,
