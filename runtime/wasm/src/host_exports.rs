@@ -908,7 +908,9 @@ impl HostExports {
     pub(crate) fn json_from_bytes(
         &self,
         bytes: &Vec<u8>,
+        gas: &GasCounter,
     ) -> Result<serde_json::Value, DeterministicHostError> {
+        gas.consume_host_fn(gas::DEFAULT_GAS_OP.with_args(gas::complexity::Size, &bytes))?;
         serde_json::from_reader(bytes.as_slice()).map_err(|e| DeterministicHostError(e.into()))
     }
 
