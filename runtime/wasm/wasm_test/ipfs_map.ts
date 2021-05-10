@@ -1,6 +1,19 @@
-import "allocator/arena";
+enum IndexForAscTypeId {
+  STRING = 0,
+}
 
-export { memory };
+export function id_of_type(type_id_index: IndexForAscTypeId): usize {
+  switch (type_id_index) {
+    case IndexForAscTypeId.STRING:
+      return idof<String>();
+    default:
+      return 0;
+  }
+}
+
+export function allocate(n: usize): usize {
+  return __alloc(n);
+}
 
 /*
  * Declarations copied from graph-ts/input.ts and edited for brevity
@@ -81,7 +94,7 @@ class Value {
   static fromString(s: string): Value {
     let value = new Value()
     value.kind = ValueKind.STRING
-    value.data = s as u64
+    value.data = changetype<u32>(s)
     return value
   }
 }
@@ -123,8 +136,8 @@ declare namespace ipfs {
 export function echoToStore(data: JSONValue, userData: Value): void {
   // expect a map of the form { "id": "anId", "value": "aValue" }
   let map = data.toObject();
-  let id = map.get("id").toString();
-  let value = map.get("value").toString();
+  let id = map.get("id")!.toString();
+  let value = map.get("value")!.toString();
 
   let entity = new Entity();
   entity.set("id", Value.fromString(id));

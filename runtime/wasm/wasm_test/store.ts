@@ -1,6 +1,19 @@
-import "allocator/arena";
+enum IndexForAscTypeId {
+  STRING = 0,
+}
 
-export { memory };
+export function id_of_type(type_id_index: IndexForAscTypeId): usize {
+  switch (type_id_index) {
+    case IndexForAscTypeId.STRING:
+      return idof<String>();
+    default:
+      return 0;
+  }
+}
+
+export function allocate(n: usize): usize {
+  return __alloc(n);
+}
 
 /** Definitions copied from graph-ts/index.ts */
 declare namespace store {
@@ -472,7 +485,7 @@ class Value {
   static fromString(s: string): Value {
     let value = new Value()
     value.kind = ValueKind.STRING
-    value.data = s as u64
+    value.data = changetype<u32>(s)
     return value
   }
 
