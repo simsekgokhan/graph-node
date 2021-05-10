@@ -931,20 +931,21 @@ fn filter_derived_fields(column_names_type: ColumnNames, object: &s::ObjectType)
         }
         ColumnNames::Select(sql_column_names) => {
             let mut filtered = ColumnNames::default();
-            let non_derived_columns = sql_column_names
-                .into_iter()
-                .filter(|column_name| !field_is_derived(column_name, object));
+            let non_derived_columns = sql_column_names.into_iter().filter_map(|column_name| {
+                if let Some(schema_field) = sast::get_field(object, &column_name) {
+                    if schema_field.find_directive("derivedFrom").is_none() {
+                        Some(column_name) // field exists and is not derived
+                    } else {
+                        None // field exists and is derived
+                    }
+                } else {
+                    None // field does not exist
+                }
+            });
             filtered.extend(non_derived_columns);
             filtered
         }
     }
-}
-
-/// Convenience function to check if a field is derived, using it's name to perform the lookup.
-fn field_is_derived(field_name: &String, object_or_interface: &s::ObjectType) -> bool {
-    sast::get_field(object_or_interface, field_name)
-        .and_then(|schema_field| schema_field.find_directive("derivedFrom"))
-        .is_some()
 }
 
 /// Returns a boolean if any operation were made or not.
