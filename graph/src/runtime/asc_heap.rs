@@ -1,6 +1,6 @@
 use semver::Version;
 
-use super::{AscPtr, AscType, DeterministicHostError};
+use super::{AscPtr, AscType, DeterministicHostError, IndexForAscTypeId};
 /// A type that can read and write to the Asc heap. Call `asc_new` and `asc_get`
 /// for reading and writing Rust structs from and to Asc.
 ///
@@ -46,6 +46,8 @@ pub trait AscHeap: Sized {
     }
 
     fn api_version(&self) -> Version;
+
+    fn asc_type_id(&mut self, type_id_index: IndexForAscTypeId) -> u32;
 }
 
 /// Type that can be converted to an Asc object of class `C`.

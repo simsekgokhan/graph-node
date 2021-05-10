@@ -1,6 +1,6 @@
 use super::DeterministicHostError;
 
-use super::{AscHeap, AscType};
+use super::{AscHeap, AscType, IndexForAscTypeId};
 use std::fmt;
 use std::marker::PhantomData;
 use std::mem::size_of;
@@ -58,8 +58,42 @@ impl<C: AscType> AscPtr<C> {
         asc_obj: C,
         heap: &mut H,
     ) -> Result<AscPtr<C>, DeterministicHostError> {
-        let heap_ptr = heap.raw_new(&asc_obj.to_asc_bytes()?)?;
-        Ok(AscPtr::new(heap_ptr))
+        let bytes = asc_obj.to_asc_bytes()?;
+        let header = if let Some(type_id_index) = C::INDEX_ASC_TYPE_ID {
+            Self::generate_header(heap, type_id_index, bytes.len() as u32)
+        } else {
+            vec![]
+        };
+
+        let header_len = header.len() as u32;
+
+        let heap_ptr = heap.raw_new(&[header, bytes].concat())?;
+
+        // Use header length as offset. so the AscPtr points directly at the content.
+        Ok(AscPtr::new(heap_ptr + header_len))
+    }
+
+    fn generate_header<H: AscHeap>(
+        heap: &mut H,
+        type_id_index: IndexForAscTypeId,
+        content_length: u32,
+    ) -> Vec<u8> {
+        let mut header: Vec<u8> = Vec::with_capacity(20);
+
+        let mm_info: [u8; 4] = (0u32).to_le_bytes();
+        let gc_info: [u8; 4] = (0u32).to_le_bytes();
+        let gc_info2: [u8; 4] = (0u32).to_le_bytes();
+        let asc_type_id = heap.asc_type_id(type_id_index);
+        let rt_id: [u8; 4] = asc_type_id.to_le_bytes();
+        let rt_size: [u8; 4] = content_length.to_le_bytes();
+
+        header.extend(&mm_info);
+        header.extend(&gc_info);
+        header.extend(&gc_info2);
+        header.extend(&rt_id);
+        header.extend(&rt_size);
+
+        header
     }
 
     /// Helper used by arrays and strings to read their length.

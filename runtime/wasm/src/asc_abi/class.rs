@@ -2,12 +2,11 @@ use anyhow::anyhow;
 use ethabi;
 use graph::{
     data::store,
-    runtime::{AscHeap, AscType, AscValue},
+    runtime::{AscHeap, AscType, AscValue, IndexForAscTypeId},
 };
 use graph::{prelude::serde_json, runtime::DeterministicHostError};
 use graph::{prelude::slog, runtime::AscPtr};
 use graph_runtime_derive::AscType;
-use std::convert::TryInto as _;
 use std::marker::PhantomData;
 use std::mem::{size_of, size_of_val};
 
@@ -168,8 +167,6 @@ pub(crate) type Uint8Array = TypedArray<u8>;
 /// prefixed with their length (in character codes) as a 32-bit integer". See
 /// https://github.com/AssemblyScript/assemblyscript/wiki/Memory-Layout-&-Management#strings
 pub(crate) struct AscString {
-    // In number of UTF-16 code units (2 bytes each).
-    length: u32,
     // The sequence of UTF-16LE code units that form the string.
     pub content: Box<[u16]>,
 }
@@ -183,57 +180,30 @@ impl AscString {
         }
 
         Ok(AscString {
-            length: content.len() as u32,
             content: content.into(),
         })
     }
 }
 
 impl AscType for AscString {
-    fn to_asc_bytes(&self) -> Result<Vec<u8>, DeterministicHostError> {
-        let mut asc_layout: Vec<u8> = Vec::new();
+    const INDEX_ASC_TYPE_ID: Option<IndexForAscTypeId> = Some(IndexForAscTypeId::String);
 
-        let length: [u8; 4] = self.length.to_le_bytes();
-        asc_layout.extend(&length);
+    fn to_asc_bytes(&self) -> Result<Vec<u8>, DeterministicHostError> {
+        let mut content: Vec<u8> = Vec::new();
 
         // Write the code points, in little-endian (LE) order.
         for &code_unit in self.content.iter() {
             let low_byte = code_unit as u8;
             let high_byte = (code_unit >> 8) as u8;
-            asc_layout.push(low_byte);
-            asc_layout.push(high_byte);
+            content.push(low_byte);
+            content.push(high_byte);
         }
 
-        Ok(asc_layout)
+        Ok(content)
     }
 
     /// The Rust representation of an Asc object as layed out in Asc memory.
     fn from_asc_bytes(asc_obj: &[u8]) -> Result<Self, DeterministicHostError> {
-        // Pointer for our current position within `asc_obj`,
-        // initially at the start of the content skipping `length`.
-        let mut offset = size_of::<i32>();
-
-        let length = asc_obj
-            .get(..offset)
-            .ok_or(DeterministicHostError(anyhow::anyhow!(
-                "String bytes not long enough to contain length"
-            )))?;
-
-        // Does not panic - already validated slice length == size_of::<i32>.
-        let length = i32::from_le_bytes(length.try_into().unwrap());
-        if length.checked_mul(2).and_then(|l| l.checked_add(4)) != asc_obj.len().try_into().ok() {
-            return Err(DeterministicHostError(anyhow::anyhow!(
-                "String length header does not equal byte length"
-            )));
-        }
-
-        // Prevents panic when accessing offset + 1 in the loop
-        if asc_obj.len() % 2 != 0 {
-            return Err(DeterministicHostError(anyhow::anyhow!(
-                "Invalid string length"
-            )));
-        }
-
         // UTF-16 (used in assemblyscript) always uses one
         // pair of bytes per code unit.
         // https://mathiasbynens.be/notes/javascript-encoding
@@ -244,26 +214,20 @@ impl AscType for AscString {
         // This way, it can encode code points in the range from 0
         // to 0x10FFFF.
 
-        // Read the content.
         let mut content = Vec::new();
-        while offset < asc_obj.len() {
-            let code_point_bytes = [asc_obj[offset], asc_obj[offset + 1]];
+        for pair in asc_obj.chunks(2) {
+            let code_point_bytes = [
+                pair[0],
+                *pair.get(1).ok_or_else(|| {
+                    DeterministicHostError(anyhow!(
+                        "Attempted to read past end of string content bytes chunk"
+                    ))
+                })?,
+            ];
             let code_point = u16::from_le_bytes(code_point_bytes);
             content.push(code_point);
-            offset += size_of::<u16>();
         }
         AscString::new(&content)
-    }
-
-    fn asc_size<H: AscHeap>(ptr: AscPtr<Self>, heap: &H) -> Result<u32, DeterministicHostError> {
-        let length = ptr.read_u32(heap)?;
-        let length_size = size_of::<u32>() as u32;
-        let code_point_size = size_of::<u16>() as u32;
-        let data_size = code_point_size.checked_mul(length);
-        let total_size = data_size.and_then(|d| d.checked_add(length_size));
-        total_size.ok_or_else(|| {
-            DeterministicHostError(anyhow::anyhow!("Overflowed when getting size of string"))
-        })
     }
 }
 

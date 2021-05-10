@@ -14,9 +14,12 @@ use crate::host_exports;
 use crate::mapping::MappingContext;
 use anyhow::Error;
 use ethabi::LogParam;
+use graph::data::store;
 use graph::prelude::*;
-use graph::{components::subgraph::MappingError, runtime::AscPtr};
-use graph::{data::store, runtime::AscHeap};
+use graph::{
+    components::subgraph::MappingError,
+    runtime::{AscHeap, AscPtr, IndexForAscTypeId},
+};
 use graph::{data::subgraph::schema::SubgraphError, runtime::DeterministicHostError};
 use host_exports::HostExportError;
 use web3::types::{Log, Transaction, U256};
@@ -74,6 +77,10 @@ impl AscHeap for WasmInstance {
 
     fn api_version(&self) -> Version {
         self.instance_ctx().api_version()
+    }
+
+    fn asc_type_id(&mut self, type_id_index: IndexForAscTypeId) -> u32 {
+        self.instance_ctx_mut().asc_type_id(type_id_index)
     }
 }
 
@@ -291,6 +298,9 @@ pub(crate) struct WasmInstanceContext {
     // Function exported by the wasm module that will allocate the request number of bytes and
     // return a pointer to the first byte of allocated space.
     memory_allocate: wasmtime::TypedFunc<i32, i32>,
+
+    // Function wrapper for `idof<T>` from AssemblyScript
+    id_of_type: wasmtime::TypedFunc<u32, u32>,
 
     pub ctx: MappingContext,
     pub(crate) valid_module: Arc<ValidModule>,
@@ -608,6 +618,7 @@ impl AscHeap for WasmInstanceContext {
 
         // Unwrap: We have just allocated enough space for `bytes`.
         self.memory.write(ptr, bytes).unwrap();
+
         self.arena_start_ptr += size;
         self.arena_free_size -= size;
 
@@ -634,6 +645,10 @@ impl AscHeap for WasmInstanceContext {
     fn api_version(&self) -> Version {
         self.ctx.host_exports.api_version.clone()
     }
+
+    fn asc_type_id(&mut self, type_id_index: IndexForAscTypeId) -> u32 {
+        self.id_of_type.call(type_id_index as u32).unwrap()
+    }
 }
 
 impl WasmInstanceContext {
@@ -652,13 +667,20 @@ impl WasmInstanceContext {
             .context("Failed to find memory export in the WASM module")?;
 
         let memory_allocate = instance
-            .get_func("memory.allocate")
-            .context("`memory.allocate` function not found")?
+            .get_func("allocate")
+            .context("`allocate` function not found")?
+            .typed()?
+            .clone();
+
+        let id_of_type = instance
+            .get_func("id_of_type")
+            .context("`id_of_type` function not found")?
             .typed()?
             .clone();
 
         Ok(WasmInstanceContext {
             memory_allocate,
+            id_of_type,
             memory,
             ctx,
             valid_module,
@@ -688,13 +710,21 @@ impl WasmInstanceContext {
             .context("Failed to find memory export in the WASM module")?;
 
         let memory_allocate = caller
-            .get_export("memory.allocate")
+            .get_export("allocate")
             .and_then(|e| e.into_func())
-            .context("`memory.allocate` function not found")?
+            .context("`allocate` function not found")?
+            .typed()?
+            .clone();
+
+        let id_of_type = caller
+            .get_export("id_of_type")
+            .and_then(|e| e.into_func())
+            .context("`id_of_type` function not found")?
             .typed()?
             .clone();
 
         Ok(WasmInstanceContext {
+            id_of_type,
             memory_allocate,
             memory,
             ctx,
