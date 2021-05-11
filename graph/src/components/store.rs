@@ -1,7 +1,6 @@
 use futures::stream::poll_fn;
 use futures::{Async, Poll, Stream};
 use graphql_parser::schema as s;
-use inflector::Inflector;
 use lazy_static::lazy_static;
 use mockall::predicate::*;
 use mockall::*;
@@ -1758,20 +1757,36 @@ pub enum ColumnNames {
 }
 
 impl ColumnNames {
+    pub fn insert(&mut self, column_name: &str) {
+        match self {
+            ColumnNames::All => {
+                let mut set = BTreeSet::new();
+                set.insert(column_name.to_string());
+                *self = ColumnNames::Select(set)
+            }
+            ColumnNames::Select(set) => {
+                set.insert(column_name.to_string());
+            }
+        }
+    }
+
     pub fn update(&mut self, field: &q::Field) {
         // ignore "meta" field names
         if field.name.starts_with("__") {
             return;
         }
-        match self {
-            ColumnNames::All => {
-                let mut set = BTreeSet::new();
-                set.insert(field.name.to_snake_case());
-                *self = ColumnNames::Select(set)
+        self.insert(&field.name)
+    }
+
+    pub fn extend(&mut self, other: Self) {
+        use ColumnNames::*;
+        match (self, other) {
+            (All, All) => {}
+            (self_ @ All, other @ Select(_)) => *self_ = other,
+            (Select(_), All) => {
+                unreachable!()
             }
-            ColumnNames::Select(set) => {
-                set.insert(field.name.to_snake_case());
-            }
+            (Select(a), Select(b)) => a.extend(b),
         }
     }
 }
@@ -1789,33 +1804,6 @@ impl PartialEq for ColumnNames {
             (All, All) => true,
             (All, Select(_)) | (Select(_), All) => false,
             (Select(a), Select(b)) => a == b,
-        }
-    }
-}
-
-impl Extend<String> for ColumnNames {
-    fn extend<T: IntoIterator<Item = String>>(&mut self, iter: T) {
-        match self {
-            ColumnNames::All => {
-                let mut set: BTreeSet<String> = BTreeSet::new();
-                for item in iter {
-                    set.insert(item);
-                }
-                *self = ColumnNames::Select(set)
-            }
-            ColumnNames::Select(set) => set.extend(iter),
-        }
-    }
-}
-
-impl IntoIterator for ColumnNames {
-    type Item = String;
-    type IntoIter = Box<dyn Iterator<Item = Self::Item>>;
-
-    fn into_iter(self) -> Self::IntoIter {
-        match self {
-            ColumnNames::All => Box::new(std::iter::empty::<String>()),
-            ColumnNames::Select(set) => Box::new(set.into_iter()),
         }
     }
 }

@@ -11,7 +11,9 @@ use diesel::query_dsl::{LoadQuery, RunQueryDsl};
 use diesel::result::{Error as DieselError, QueryResult};
 use diesel::sql_types::{Array, BigInt, Binary, Bool, Integer, Jsonb, Range, Text};
 use diesel::Connection;
+use inflector::Inflector;
 use lazy_static::lazy_static;
+
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::convert::TryFrom;
 use std::env;
@@ -2883,9 +2885,13 @@ fn write_column_names(column_names: &ColumnNames, out: &mut AstPass<Pg>) {
     match column_names {
         ColumnNames::All => out.push_sql(" * "),
         ColumnNames::Select(column_names) => {
-            let mut iterator = column_names.union(&BASE_SQL_COLUMNS).into_iter().peekable();
+            let mut iterator = column_names
+                .union(&BASE_SQL_COLUMNS)
+                .into_iter()
+                .map(Inflector::to_snake_case)
+                .peekable();
             while let Some(column_name) = iterator.next() {
-                out.push_sql(column_name);
+                out.push_sql(&column_name);
                 if iterator.peek().is_some() {
                     out.push_sql(", ");
                 }
@@ -2903,16 +2909,20 @@ fn jsonb_build_object(column_names: &ColumnNames, table_identifier: &str, out: &
         }
         ColumnNames::Select(column_names) => {
             out.push_sql("jsonb_build_object(");
-            let mut iterator = column_names.union(&BASE_SQL_COLUMNS).into_iter().peekable();
+            let mut iterator = column_names
+                .union(&BASE_SQL_COLUMNS)
+                .into_iter()
+                .map(Inflector::to_snake_case)
+                .peekable();
             while let Some(column_name) = iterator.next() {
                 // field name as json key
                 out.push_sql("'");
-                out.push_sql(column_name);
+                out.push_sql(&column_name);
                 out.push_sql("', ");
                 // column identifier
                 out.push_sql(table_identifier);
                 out.push_sql(".");
-                out.push_sql(column_name);
+                out.push_sql(&column_name);
                 if iterator.peek().is_some() {
                     out.push_sql(", ");
                 }
