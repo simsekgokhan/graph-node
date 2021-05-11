@@ -382,6 +382,36 @@ impl<'a> Join<'a> {
                 .insert(response_key.to_owned(), values.unwrap_or(vec![]));
         }
     }
+
+    fn windows(
+        &self,
+        parents: &Vec<&mut Node>,
+        multiplicity: ChildMultiplicity,
+    ) -> Vec<EntityWindow> {
+        let mut windows = vec![];
+
+        for cond in &self.conds {
+            let mut parents_by_id = parents
+                .iter()
+                .filter(|parent| parent.typename() == cond.parent_type.as_str())
+                .filter_map(|parent| parent.id().ok().map(|id| (id, &**parent)))
+                .collect::<Vec<_>>();
+
+            if !parents_by_id.is_empty() {
+                parents_by_id.sort_unstable_by(|(id1, _), (id2, _)| id1.cmp(id2));
+                parents_by_id.dedup_by(|(id1, _), (id2, _)| id1 == id2);
+
+                let (ids, link) = cond.entity_link(parents_by_id, multiplicity);
+                windows.push(EntityWindow {
+                    child_type: cond.child_type.to_owned(),
+                    ids,
+                    link,
+                    column_names: ColumnNames::All,
+                });
+            }
+        }
+        windows
+    }
 }
 
 /// Run the query in `ctx` in such a manner that we only perform one query
@@ -824,13 +854,15 @@ fn fetch(
         );
     }
 
-    // For anything but the root node, restrict the children we select by the parent list
-    if !is_root_node(parents.iter().map(|p| &**p))
-        && restricted_original_collection(&mut query, &join, parents, multiplicity)
-    {
-        return Ok(vec![]);
+    if !is_root_node(parents.iter().map(|p| &**p)) {
+        // For anything but the root node, restrict the children we select
+        // by the parent list
+        let windows = join.windows(parents, multiplicity);
+        if windows.is_empty() {
+            return Ok(vec![]);
+        }
+        query.collection = EntityCollection::Window(windows);
     }
-
     store
         .find_query_values(query)
         .map(|entities| entities.into_iter().map(|entity| entity.into()).collect())
@@ -942,59 +974,4 @@ fn filter_derived_fields(column_names_type: ColumnNames, object: &s::ObjectType)
             filtered
         }
     }
-}
-
-/// Returns a boolean if any operation were made or not.
-fn restricted_original_collection(
-    query: &mut EntityQuery,
-    join: &Join,
-    parents: &Vec<&mut Node>,
-    multiplicity: ChildMultiplicity,
-) -> bool {
-    let mut windows = vec![];
-
-    // Here we use an uninitialized hashmap because initializing it is an optional but
-    // destructive operation for the EntityCollection inside `query`.
-    let mut column_names_by_entity_type: Option<HashMap<EntityType, ColumnNames>> = None;
-
-    for cond in &join.conds {
-        let mut parents_by_id = parents
-            .iter()
-            .filter(|parent| parent.typename() == cond.parent_type.as_str())
-            .filter_map(|parent| parent.id().ok().map(|id| (id, &**parent)))
-            .collect::<Vec<_>>();
-
-        if !parents_by_id.is_empty() {
-            parents_by_id.sort_unstable_by(|(id1, _), (id2, _)| id1.cmp(id2));
-            parents_by_id.dedup_by(|(id1, _), (id2, _)| id1 == id2);
-
-            let (ids, link) = cond.entity_link(parents_by_id, multiplicity);
-            let child_type: EntityType = cond.child_type.to_owned();
-
-            // Initialize the hashmap with values drained from the current EntityCollection
-            if column_names_by_entity_type.is_none() {
-                column_names_by_entity_type =
-                    Some(query.collection.drain_for_entity_types_and_column_name());
-            }
-
-            column_names_by_entity_type.as_ref().map(|hashmap| {
-                let column_names = match hashmap.get(&child_type) {
-                    Some(column_names) => column_names.clone(),
-                    None => ColumnNames::All,
-                };
-                windows.push(EntityWindow {
-                    column_names,
-                    child_type,
-                    ids,
-                    link,
-                });
-            });
-        }
-    }
-
-    if !windows.is_empty() {
-        query.collection = EntityCollection::Window(windows);
-        return false;
-    }
-    true
 }
