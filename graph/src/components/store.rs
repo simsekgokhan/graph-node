@@ -1748,7 +1748,7 @@ impl LfuCache<EntityKey, Option<Entity>> {
 }
 
 /// Determines which columns should be selected in a table.
-#[derive(Clone, Debug, Eq, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum ColumnNames {
     /// Select all columns. Equivalent to a `"SELECT *"`.
     All,
@@ -1787,23 +1787,6 @@ impl ColumnNames {
                 unreachable!()
             }
             (Select(a), Select(b)) => a.extend(b),
-        }
-    }
-}
-
-impl Default for ColumnNames {
-    fn default() -> Self {
-        ColumnNames::All
-    }
-}
-
-impl PartialEq for ColumnNames {
-    fn eq(&self, other: &Self) -> bool {
-        use ColumnNames::*;
-        match (self, other) {
-            (All, All) => true,
-            (All, Select(_)) | (Select(_), All) => false,
-            (Select(a), Select(b)) => a == b,
         }
     }
 }

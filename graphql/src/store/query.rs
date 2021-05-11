@@ -28,14 +28,16 @@ pub fn build_query<'a>(
     let entity = entity.into();
     let entity_types = EntityCollection::All(match &entity {
         ObjectOrInterface::Object(object) => {
-            let selected_columns = column_names.remove(&(*object).into()).unwrap_or_default();
+            let selected_columns = column_names
+                .remove(&(*object).into())
+                .unwrap_or(ColumnNames::All);
             vec![((*object).into(), selected_columns)]
         }
         ObjectOrInterface::Interface(interface) => types_for_interface
             [&EntityType::from(*interface)]
             .iter()
             .map(|o| {
-                let selected_columns = column_names.remove(&o.into()).unwrap_or_default();
+                let selected_columns = column_names.remove(&o.into()).unwrap_or(ColumnNames::All);
                 (o.into(), selected_columns)
             })
             .collect(),

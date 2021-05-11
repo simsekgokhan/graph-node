@@ -539,8 +539,8 @@ impl<'a> CollectedResponseKey<'a> {
         object_or_interface: ObjectOrInterface<'a>,
         field: &'a q::Field,
     ) {
-        object_or_interface
-            .field(&field.name)
+        let schema_field = object_or_interface.field(&field.name);
+        schema_field
             .and_then(|field_def| sast::get_type_definition_from_field(document, field_def))
             .map(|type_def| match type_def {
                 // Only consider fields that point to objects or interfaces, and ignore nonexistent fields.
@@ -562,28 +562,19 @@ impl<'a> CollectedResponseKey<'a> {
                                 .push(field);
                         }
                     }
-                    self.collect_column_name(object_or_interface, field);
                 }
-                s::TypeDefinition::Scalar(_) => {
-                    self.collect_column_name(object_or_interface, field);
-                }
-                _ => {}
-            });
-    }
+                s::TypeDefinition::Scalar(_) => {}
 
-    /// Checks if a given query field exists in schema before collecting it.
-    fn collect_column_name(
-        &mut self,
-        object_or_interface: ObjectOrInterface<'a>,
-        query_field: &'a q::Field,
-    ) {
-        object_or_interface
-            .field(&query_field.name)
-            .is_some()
-            .then(|| {
-                self.collected_column_names
-                    .update(object_or_interface, query_field)
+                s::TypeDefinition::Union(_)
+                | s::TypeDefinition::Enum(_)
+                | s::TypeDefinition::InputObject(_) => return,
             });
+
+        // collect the column name if field exists in schema
+        if schema_field.is_some() {
+            self.collected_column_names
+                .update(object_or_interface, &field)
+        }
     }
 }
 
@@ -854,7 +845,10 @@ struct CollectedColumnNames<'a>(HashMap<ObjectOrInterface<'a>, ColumnNames>);
 
 impl<'a> CollectedColumnNames<'a> {
     fn update(&mut self, object_or_interface: ObjectOrInterface<'a>, field: &q::Field) {
-        self.0.entry(object_or_interface).or_default().update(field);
+        self.0
+            .entry(object_or_interface)
+            .or_insert_with(|| ColumnNames::All)
+            .update(field);
     }
 
     /// Consume this instance and transform it into a mapping from
@@ -930,7 +924,7 @@ fn filter_derived_fields(column_names_type: ColumnNames, object: &s::ObjectType)
             return column_names_type;
         }
         ColumnNames::Select(sql_column_names) => {
-            let mut filtered = ColumnNames::default();
+            let mut filtered = ColumnNames::All;
             sql_column_names
                 .into_iter()
                 .filter_map(|column_name| {
@@ -986,7 +980,7 @@ fn restricted_original_collection(
             column_names_by_entity_type.as_ref().map(|hashmap| {
                 let column_names = match hashmap.get(&child_type) {
                     Some(column_names) => column_names.clone(),
-                    None => Default::default(),
+                    None => ColumnNames::All,
                 };
                 windows.push(EntityWindow {
                     column_names,
