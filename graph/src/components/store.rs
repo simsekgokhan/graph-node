@@ -6,7 +6,7 @@ use mockall::predicate::*;
 use mockall::*;
 use serde::{Deserialize, Serialize};
 use stable_hash::prelude::*;
-use std::collections::hash_map::Entry;
+use std::collections::btree_map::Entry;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::env;
 use std::fmt;
@@ -332,25 +332,21 @@ pub enum EntityCollection {
 }
 
 impl EntityCollection {
-    /// This will drain the whole collection but will only yield a hashmap of
-    /// `EntityTypes` mapped to their `ColumnNames`.
-    pub fn drain_for_entity_types_and_column_name(&mut self) -> HashMap<EntityType, ColumnNames> {
-        let mut map = HashMap::new();
+    pub fn entity_types_and_column_names(&self) -> BTreeMap<EntityType, ColumnNames> {
+        let mut map = BTreeMap::new();
         match self {
-            EntityCollection::All(pairs) => {
-                pairs.drain(..).for_each(|(entity_type, column_names)| {
-                    map.insert(entity_type, column_names);
-                })
-            }
-            EntityCollection::Window(windows) => windows.drain(..).for_each(
+            EntityCollection::All(pairs) => pairs.iter().for_each(|(entity_type, column_names)| {
+                map.insert(entity_type.clone(), column_names.clone());
+            }),
+            EntityCollection::Window(windows) => windows.iter().for_each(
                 |EntityWindow {
                      child_type,
                      column_names,
                      ..
-                 }| match map.entry(child_type) {
-                    Entry::Occupied(mut entry) => entry.get_mut().extend(column_names),
+                 }| match map.entry(child_type.clone()) {
+                    Entry::Occupied(mut entry) => entry.get_mut().extend(column_names.clone()),
                     Entry::Vacant(entry) => {
-                        entry.insert(column_names);
+                        entry.insert(column_names.clone());
                     }
                 },
             ),
@@ -1611,6 +1607,7 @@ impl EntityCache {
     }
 
     fn entity_op(&mut self, key: EntityKey, op: EntityOp) {
+        use std::collections::hash_map::Entry;
         let updates = match self.in_handler {
             true => &mut self.handler_updates,
             false => &mut self.updates,

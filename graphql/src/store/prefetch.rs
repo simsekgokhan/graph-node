@@ -14,7 +14,7 @@ use graph::{
     data::graphql::ext::DirectiveFinder,
     prelude::{
         q, s, ApiSchema, BlockNumber, ChildMultiplicity, ColumnNames, EntityCollection,
-        EntityFilter, EntityLink, EntityOrder, EntityQuery, EntityWindow, Logger, ParentLink,
+        EntityFilter, EntityLink, EntityOrder, EntityWindow, Logger, ParentLink,
         QueryExecutionError, QueryStore, Value as StoreValue, WindowAttribute,
     },
 };
@@ -387,9 +387,10 @@ impl<'a> Join<'a> {
         &self,
         parents: &Vec<&mut Node>,
         multiplicity: ChildMultiplicity,
+        previous_collection: &EntityCollection,
     ) -> Vec<EntityWindow> {
         let mut windows = vec![];
-
+        let column_names_map = previous_collection.entity_types_and_column_names();
         for cond in &self.conds {
             let mut parents_by_id = parents
                 .iter()
@@ -402,11 +403,16 @@ impl<'a> Join<'a> {
                 parents_by_id.dedup_by(|(id1, _), (id2, _)| id1 == id2);
 
                 let (ids, link) = cond.entity_link(parents_by_id, multiplicity);
+                let child_type: EntityType = cond.child_type.to_owned();
+                let column_names = match column_names_map.get(&child_type) {
+                    Some(column_names) => column_names.clone(),
+                    None => ColumnNames::All,
+                };
                 windows.push(EntityWindow {
-                    child_type: cond.child_type.to_owned(),
+                    child_type,
                     ids,
                     link,
-                    column_names: ColumnNames::All,
+                    column_names,
                 });
             }
         }
@@ -857,7 +863,7 @@ fn fetch(
     if !is_root_node(parents.iter().map(|p| &**p)) {
         // For anything but the root node, restrict the children we select
         // by the parent list
-        let windows = join.windows(parents, multiplicity);
+        let windows = join.windows(parents, multiplicity, &query.collection);
         if windows.is_empty() {
             return Ok(vec![]);
         }
