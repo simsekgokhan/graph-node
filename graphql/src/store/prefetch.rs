@@ -36,6 +36,18 @@ type GroupedFieldSet<'a> = IndexMap<&'a str, CollectedResponseKey<'a>>;
 #[derive(Clone, Debug)]
 pub struct ObjectCondition<'a>(&'a s::ObjectType);
 
+impl<'a> Ord for ObjectCondition<'a> {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.0.name.cmp(&other.0.name)
+    }
+}
+
+impl<'a> PartialOrd for ObjectCondition<'a> {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.0.name.cmp(&other.0.name))
+    }
+}
+
 impl std::hash::Hash for ObjectCondition<'_> {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         self.0.name.hash(state)
@@ -876,7 +888,7 @@ fn fetch(
 
 /// Represents a finished column collection operation, mapping each object type to the final set of
 /// selected SQL columns.
-type ColumnNamesByObjectType<'a> = HashMap<ObjectCondition<'a>, ColumnNames>;
+type ColumnNamesByObjectType<'a> = BTreeMap<ObjectCondition<'a>, ColumnNames>;
 
 #[derive(Debug, Default, Clone)]
 struct CollectedColumnNames<'a>(HashMap<ObjectOrInterface<'a>, ColumnNames>);
@@ -896,7 +908,7 @@ impl<'a> CollectedColumnNames<'a> {
         mut self,
         types_for_interface: &'a BTreeMap<EntityType, Vec<s::ObjectType>>,
     ) -> ColumnNamesByObjectType {
-        let mut map: ColumnNamesByObjectType = HashMap::new();
+        let mut map: ColumnNamesByObjectType = BTreeMap::new();
         for (object_or_interface, column_names) in self.0.drain() {
             match object_or_interface {
                 ObjectOrInterface::Object(object) => {
@@ -914,11 +926,11 @@ impl<'a> CollectedColumnNames<'a> {
 
     /// Helper function for handling insertion on the `ColumnNamesByObjectType` struct.
     fn upsert(
-        map: &mut HashMap<ObjectCondition<'a>, ColumnNames>,
+        map: &mut BTreeMap<ObjectCondition<'a>, ColumnNames>,
         object: &'a s::ObjectType,
         column_names: ColumnNames,
     ) {
-        use std::collections::hash_map::Entry;
+        use std::collections::btree_map::Entry;
         let key = ObjectCondition(object);
         let column_names = filter_derived_fields(column_names, object);
         match map.entry(key) {
@@ -958,9 +970,7 @@ impl<'a> CollectedColumnNames<'a> {
 /// Removes all derived fields from a `ColumnNames` collection based on a referential `ObjectType`.
 fn filter_derived_fields(column_names_type: ColumnNames, object: &s::ObjectType) -> ColumnNames {
     match column_names_type {
-        ColumnNames::All => {
-            return column_names_type;
-        }
+        ColumnNames::All => column_names_type,
         ColumnNames::Select(sql_column_names) => {
             let mut filtered = ColumnNames::All;
             sql_column_names

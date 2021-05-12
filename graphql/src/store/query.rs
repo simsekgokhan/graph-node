@@ -23,7 +23,7 @@ pub fn build_query<'a>(
     types_for_interface: &'a BTreeMap<EntityType, Vec<s::ObjectType>>,
     max_first: u32,
     max_skip: u32,
-    mut column_names: HashMap<ObjectCondition<'a>, ColumnNames>,
+    mut column_names: BTreeMap<ObjectCondition<'a>, ColumnNames>,
 ) -> Result<EntityQuery, QueryExecutionError> {
     let entity = entity.into();
     let entity_types = EntityCollection::All(match &entity {
