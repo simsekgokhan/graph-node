@@ -11,15 +11,7 @@ use diesel::query_dsl::{LoadQuery, RunQueryDsl};
 use diesel::result::{Error as DieselError, QueryResult};
 use diesel::sql_types::{Array, BigInt, Binary, Bool, Integer, Jsonb, Range, Text};
 use diesel::Connection;
-use inflector::Inflector;
 use lazy_static::lazy_static;
-
-use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
-use std::convert::TryFrom;
-use std::env;
-use std::fmt::{self, Display};
-use std::iter::FromIterator;
-use std::str::FromStr;
 
 use graph::prelude::{
     anyhow, q, serde_json, Attribute, BlockNumber, ChildMultiplicity, Entity, EntityCollection,
@@ -30,6 +22,13 @@ use graph::{
     components::store::{ColumnNames, EntityType},
     data::{schema::FulltextAlgorithm, store::scalar},
 };
+use itertools::Itertools;
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
+use std::convert::TryFrom;
+use std::env;
+use std::fmt::{self, Display};
+use std::iter::FromIterator;
+use std::str::FromStr;
 
 use crate::relational::{
     Column, ColumnType, IdType, Layout, SqlName, Table, PRIMARY_KEY_COLUMN, STRING_PREFIX_SIZE,
@@ -78,7 +77,7 @@ lazy_static! {
 
     /// Those are columns that we always want to fetch from the database.
     static ref BASE_SQL_COLUMNS: BTreeSet<String> =
-        ["id", "vid"].iter().map(ToString::to_string).collect();
+        ["id"].iter().map(ToString::to_string).collect();
 }
 
 #[derive(Debug)]
@@ -1639,7 +1638,7 @@ impl<'a> FilterWindow<'a> {
         out.push_sql("\n/* children_type_a */  from unnest(");
         column.bind_ids(&self.ids, out)?;
         out.push_sql(") as p(id) cross join lateral (select ");
-        write_column_names(&self.column_names, out);
+        write_column_names(&self.column_names, &self.table, out);
         out.push_sql(" from ");
         out.push_sql(self.table.qualified_name.as_str());
         out.push_sql(" c where ");
@@ -1718,7 +1717,7 @@ impl<'a> FilterWindow<'a> {
         out.push_sql("\n/* children_type_b */  from unnest(");
         column.bind_ids(&self.ids, out)?;
         out.push_sql(") as p(id) cross join lateral (select ");
-        write_column_names(&self.column_names, out);
+        write_column_names(&self.column_names, &self.table, out);
         out.push_sql(" from ");
         out.push_sql(self.table.qualified_name.as_str());
         out.push_sql(" c where ");
@@ -1787,7 +1786,7 @@ impl<'a> FilterWindow<'a> {
         self.table.primary_key().push_matrix(&child_ids, out)?;
         out.push_sql(")) as p(id, child_ids)");
         out.push_sql(" cross join lateral (select ");
-        write_column_names(&self.column_names, out);
+        write_column_names(&self.column_names, &self.table, out);
         out.push_sql(" from ");
         out.push_sql(self.table.qualified_name.as_str());
         out.push_sql(" c where ");
@@ -2287,7 +2286,7 @@ impl<'a> FilterQuery<'a> {
     ) -> QueryResult<()> {
         Self::select_entity_and_data(table, &mut out);
         out.push_sql(" from (select ");
-        write_column_names(&column_names, &mut out);
+        write_column_names(&column_names, &table, &mut out);
         self.filtered_rows(table, filter, out.reborrow())?;
         out.push_sql("\n ");
         self.sort_key.order_by(&mut out)?;
@@ -2380,7 +2379,7 @@ impl<'a> FilterQuery<'a> {
                 out.push_sql("\nunion all\n");
             }
             out.push_sql("select m.entity, ");
-            jsonb_build_object(column_names, "c", &mut out);
+            jsonb_build_object(column_names, "c", &table, &mut out);
             out.push_sql(" as data, c.id");
             self.sort_key.select(&mut out)?;
             out.push_sql("\n  from ");
@@ -2455,25 +2454,27 @@ impl<'a> FilterQuery<'a> {
         // the hassle of making `Table` hashable
         let unique_child_tables = windows
             .iter()
-            .map(|window| {
+            .unique_by(|window| {
                 (
                     &window.table.qualified_name,
                     &window.table.object,
                     &window.column_names,
                 )
             })
-            .collect::<HashSet<_>>();
-        for (i, (table_name, object, column_names)) in unique_child_tables.into_iter().enumerate() {
+            .enumerate()
+            .into_iter();
+
+        for (i, window) in unique_child_tables {
             if i > 0 {
                 out.push_sql("\nunion all\n");
             }
             out.push_sql("select m.*, ");
-            jsonb_build_object(&column_names, "c", &mut out);
+            jsonb_build_object(&window.column_names, "c", &window.table, &mut out);
             out.push_sql("|| jsonb_build_object('g$parent_id', m.g$parent_id) as data");
             out.push_sql("\n  from ");
-            out.push_sql(table_name.as_str());
+            out.push_sql(&window.table.qualified_name.as_str());
             out.push_sql(" c, matches m\n where c.vid = m.vid and m.entity = '");
-            out.push_sql(object.as_str());
+            out.push_sql(&window.table.object.as_str());
             out.push_sql("'");
         }
         out.push_sql("\n ");
@@ -2881,17 +2882,22 @@ pub struct CopyVid {
     pub vid: i64,
 }
 
-fn write_column_names(column_names: &ColumnNames, out: &mut AstPass<Pg>) {
+fn write_column_names(column_names: &ColumnNames, table: &Table, out: &mut AstPass<Pg>) {
     match column_names {
         ColumnNames::All => out.push_sql(" * "),
         ColumnNames::Select(column_names) => {
             let mut iterator = column_names
                 .union(&BASE_SQL_COLUMNS)
                 .into_iter()
-                .map(Inflector::to_snake_case)
+                .map(|column_name| {
+                    &table
+                        .column_for_field(&column_name)
+                        .expect("failed to find column for field")
+                        .name
+                })
                 .peekable();
             while let Some(column_name) = iterator.next() {
-                out.push_sql(&column_name);
+                out.push_sql(&column_name.as_str());
                 if iterator.peek().is_some() {
                     out.push_sql(", ");
                 }
@@ -2900,29 +2906,39 @@ fn write_column_names(column_names: &ColumnNames, out: &mut AstPass<Pg>) {
     }
 }
 
-fn jsonb_build_object(column_names: &ColumnNames, table_identifier: &str, out: &mut AstPass<Pg>) {
+fn jsonb_build_object(
+    column_names: &ColumnNames,
+    table_identifier: &str,
+    table: &Table,
+    out: &mut AstPass<Pg>,
+) {
     match column_names {
         ColumnNames::All => {
-            out.push_sql(r#"to_jsonb(""#);
+            out.push_sql("to_jsonb(\"");
             out.push_sql(table_identifier);
-            out.push_sql(r#"".*)"#);
+            out.push_sql("\".*)");
         }
         ColumnNames::Select(column_names) => {
             out.push_sql("jsonb_build_object(");
             let mut iterator = column_names
                 .union(&BASE_SQL_COLUMNS)
                 .into_iter()
-                .map(Inflector::to_snake_case)
+                .map(|column_name| {
+                    &table
+                        .column_for_field(&column_name)
+                        .expect("failed to find column for field")
+                        .name
+                })
                 .peekable();
             while let Some(column_name) = iterator.next() {
                 // field name as json key
                 out.push_sql("'");
-                out.push_sql(&column_name);
+                out.push_sql(column_name.as_str());
                 out.push_sql("', ");
                 // column identifier
                 out.push_sql(table_identifier);
                 out.push_sql(".");
-                out.push_sql(&column_name);
+                out.push_sql(column_name.as_str());
                 if iterator.peek().is_some() {
                     out.push_sql(", ");
                 }

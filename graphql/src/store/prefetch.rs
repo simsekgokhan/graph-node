@@ -897,7 +897,7 @@ impl<'a> CollectedColumnNames<'a> {
     fn update(&mut self, object_or_interface: ObjectOrInterface<'a>, field: &q::Field) {
         self.0
             .entry(object_or_interface)
-            .or_insert_with(|| ColumnNames::All)
+            .or_insert(ColumnNames::All)
             .update(field);
     }
 
