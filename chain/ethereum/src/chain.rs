@@ -21,7 +21,7 @@ use graph::{
         Future01CompatExt, LinkResolver, Logger, LoggerFactory, MetricsRegistry, NodeId,
         SubgraphStore,
     },
-    runtime::{AscType, DeterministicHostError},
+    runtime::{AscType, DeterministicHostError, AscIndexId},
     tokio_stream::Stream,
 };
 
@@ -383,6 +383,8 @@ impl Stream for DummyBlockStream {
 }
 
 pub struct DummyMappingTrigger;
+
+impl AscIndexId for DummyMappingTrigger {}
 
 impl AscType for DummyMappingTrigger {
     fn to_asc_bytes(&self) -> Result<Vec<u8>, DeterministicHostError> {

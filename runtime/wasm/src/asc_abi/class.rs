@@ -2,7 +2,7 @@ use anyhow::anyhow;
 use ethabi;
 use graph::{
     data::store,
-    runtime::{AscHeap, AscType, AscValue, IndexForAscTypeId},
+    runtime::{AscHeap, AscType, AscValue, IndexForAscTypeId, AscIndexId},
 };
 use graph::{prelude::serde_json, runtime::DeterministicHostError};
 use graph::{prelude::slog, runtime::AscPtr};
@@ -21,16 +21,19 @@ pub(crate) struct ArrayBuffer {
     // `byte_length_size` so with 4 more bytes we align the contents at 8
     // bytes. No Asc type has alignment greater than 8, so the
     // elements in `content` will be aligned for any element type.
-    padding: [u8; 4],
+    // padding: [u8; 4],
     // In Asc this slice is layed out inline with the ArrayBuffer.
     content: Box<[u8]>,
 }
 
 impl ArrayBuffer {
     fn new<T: AscType>(values: &[T]) -> Result<Self, DeterministicHostError> {
+        println!("ArrayBuffer::new");
         let mut content = Vec::new();
+        // this should be correct
         for value in values {
             let asc_bytes = value.to_asc_bytes()?;
+            println!("value.to_asc_bytes: {:?}", asc_bytes);
             // An `AscValue` has size equal to alignment, no padding required.
             content.extend(&asc_bytes);
         }
@@ -42,7 +45,7 @@ impl ArrayBuffer {
         }
         Ok(ArrayBuffer {
             byte_length: content.len() as u32,
-            padding: [0; 4],
+            // padding: [0; 4],
             content: content.into(),
         })
     }
@@ -81,28 +84,44 @@ impl ArrayBuffer {
     }
 }
 
+impl AscIndexId for ArrayBuffer {
+    const INDEX_ASC_TYPE_ID: Option<IndexForAscTypeId> = Some(IndexForAscTypeId::ArrayBuffer);
+}
+
 impl AscType for ArrayBuffer {
     fn to_asc_bytes(&self) -> Result<Vec<u8>, DeterministicHostError> {
+        println!("ArrayBuffer::to_asc_bytes");
         let mut asc_layout: Vec<u8> = Vec::new();
 
-        let byte_length: [u8; 4] = self.byte_length.to_le_bytes();
-        asc_layout.extend(&byte_length);
-        asc_layout.extend(&self.padding);
+        // let byte_length: [u8; 4] = self.byte_length.to_le_bytes();
+        // asc_layout.extend(&byte_length);
+        // asc_layout.extend(&self.padding);
+        // for c in self.content.iter() {
+        //     let le = c.to_le_bytes();
+        //     asc_layout.extend(le);
+        // }
         asc_layout.extend(self.content.iter());
 
         // Allocate extra capacity to next power of two, as required by asc.
-        let header_size = size_of_val(&byte_length) + size_of_val(&self.padding);
+        let header_size = 8; 
         let total_size = self.byte_length as usize + header_size;
+        println!("byte_length: {}", self.byte_length);
+        println!("total_size: {}", total_size);
         let total_capacity = total_size.next_power_of_two();
-        let extra_capacity = total_capacity - total_size;
-        asc_layout.extend(std::iter::repeat(0).take(extra_capacity));
-        assert_eq!(asc_layout.len(), total_capacity);
+        println!("total_capacity: {}", total_capacity);
+        let extra_capacity = total_capacity - self.byte_length as usize;
+        println!("extra_capacity: {}", extra_capacity);
+        // asc_layout.extend(std::iter::repeat(0).take(extra_capacity));
+        asc_layout.extend(std::iter::repeat(0).take(8));
+        // assert_eq!(asc_layout.len(), total_capacity);
+        println!("asc_layout: {:?}", asc_layout);
 
         Ok(asc_layout)
     }
 
     /// The Rust representation of an Asc object as layed out in Asc memory.
     fn from_asc_bytes(asc_obj: &[u8]) -> Result<Self, DeterministicHostError> {
+        println!("ArrayBuffer::from_asc_bytes");// NOT CALLED -> YET, not doing the other way around
         // Skip `byte_length` and the padding.
         let content_offset = size_of::<u32>() + 4;
         let byte_length = asc_obj.get(..size_of::<u32>()).ok_or_else(|| {
@@ -113,17 +132,17 @@ impl AscType for ArrayBuffer {
         })?;
         Ok(ArrayBuffer {
             byte_length: u32::from_asc_bytes(&byte_length)?,
-            padding: [0; 4],
+            // padding: [0; 4],
             content: content.to_vec().into(),
         })
     }
 
-    fn asc_size<H: AscHeap>(ptr: AscPtr<Self>, heap: &H) -> Result<u32, DeterministicHostError> {
-        let byte_length = ptr.read_u32(heap)?;
-        let byte_length_size = size_of::<u32>() as u32;
-        let padding_size = size_of::<u32>() as u32;
-        Ok(byte_length_size + padding_size + byte_length)
-    }
+    // fn asc_size<H: AscHeap>(ptr: AscPtr<Self>, heap: &H) -> Result<u32, DeterministicHostError> {
+    //     let byte_length = ptr.read_u32(heap)?;
+    //     let byte_length_size = size_of::<u32>() as u32;
+    //     let padding_size = size_of::<u32>() as u32;
+    //     Ok(byte_length_size + padding_size + byte_length)
+    // }
 }
 
 /// A typed, indexable view of an `ArrayBuffer` of Asc primitives. In Asc it's
@@ -140,24 +159,36 @@ pub(crate) struct TypedArray<T> {
     ty: PhantomData<T>,
 }
 
-impl<T: AscValue> TypedArray<T> {
+impl<T: AscValue> TypedArray<T>
+    where ArrayBuffer: AscIndexId
+{
     pub(crate) fn new<H: AscHeap>(
         content: &[T],
         heap: &mut H,
     ) -> Result<Self, DeterministicHostError> {
+        println!("TypedArray::new");
+        println!("full type: {}", std::any::type_name::<Self>());
         let buffer = ArrayBuffer::new(content)?;
+        let byte_length = buffer.byte_length;
+        println!("byte_length again: {}", byte_length);
+        let ptr = AscPtr::alloc_obj(buffer, heap)?;
+        println!("ptr: {:?}", ptr);
         Ok(TypedArray {
-            byte_length: buffer.byte_length,
-            buffer: AscPtr::alloc_obj(buffer, heap)?,
+            buffer: ptr,
             byte_offset: 0,
+            // byte_offset: 1,
+            byte_length,
+            // byte_length: 56,
             ty: PhantomData,
         })
     }
 
     pub(crate) fn to_vec<H: AscHeap>(&self, heap: &H) -> Result<Vec<T>, DeterministicHostError> {
+        println!("TypedArray::to_vec");
         self.buffer
             .read_ptr(heap)?
             .get(self.byte_offset, self.byte_length / size_of::<T>() as u32)
+            // .get(0, 4 / size_of::<T>() as u32)
     }
 }
 
@@ -185,9 +216,11 @@ impl AscString {
     }
 }
 
-impl AscType for AscString {
+impl AscIndexId for AscString {
     const INDEX_ASC_TYPE_ID: Option<IndexForAscTypeId> = Some(IndexForAscTypeId::String);
+}
 
+impl AscType for AscString {
     fn to_asc_bytes(&self) -> Result<Vec<u8>, DeterministicHostError> {
         let mut content: Vec<u8> = Vec::new();
 
@@ -241,8 +274,11 @@ pub(crate) struct Array<T> {
     ty: PhantomData<T>,
 }
 
-impl<T: AscValue> Array<T> {
+impl<T: AscValue> Array<T>
+    where ArrayBuffer: AscIndexId
+{
     pub fn new<H: AscHeap>(content: &[T], heap: &mut H) -> Result<Self, DeterministicHostError> {
+        println!("Array::new");
         Ok(Array {
             buffer: AscPtr::alloc_obj(ArrayBuffer::new(content)?, heap)?,
             // If this cast would overflow, the above line has already panicked.

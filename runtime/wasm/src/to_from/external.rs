@@ -215,6 +215,7 @@ impl TryFromAscObj<AscEnum<StoreValueKind>> for store::Value {
         use self::store::Value;
 
         let payload = asc_enum.payload;
+        println!("the payload: {}", payload.0);
         Ok(match asc_enum.kind {
             StoreValueKind::String => {
                 let ptr: AscPtr<AscString> = AscPtr::from(payload);

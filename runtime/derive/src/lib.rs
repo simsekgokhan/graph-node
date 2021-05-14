@@ -65,7 +65,23 @@ fn asc_type_derive_struct(item_struct: ItemStruct) -> TokenStream {
         _ => panic!("AscType can only be derived for structs with named fields"),
     };
 
+    println!("STRUCT NAME: {}", struct_name);
+
+    let asc_index_id_impl = if struct_name == "TypedArray" {
+        quote! {
+            impl#impl_generics AscIndexId for#struct_name#ty_generics #where_clause {
+                const INDEX_ASC_TYPE_ID: Option<IndexForAscTypeId> = Some(IndexForAscTypeId::TypedArray);
+            }
+        }
+    } else {
+        quote! {
+            impl#impl_generics AscIndexId for#struct_name#ty_generics #where_clause {}
+        }
+    };
+
     TokenStream::from(quote! {
+        #asc_index_id_impl
+
         impl#impl_generics AscType for #struct_name#ty_generics #where_clause {
             fn to_asc_bytes(&self) -> Result<Vec<u8>, DeterministicHostError> {
                let mut bytes = Vec::new();
@@ -162,6 +178,8 @@ fn asc_type_derive_enum(item_enum: ItemEnum) -> TokenStream {
     let variant_discriminant2 = variant_discriminant.clone();
 
     TokenStream::from(quote! {
+        impl#impl_generics AscIndexId for #enum_name#ty_generics #where_clause {}
+
         impl#impl_generics AscType for #enum_name#ty_generics #where_clause {
             fn to_asc_bytes(&self) -> Result<Vec<u8>, DeterministicHostError> {
                 let discriminant: u32 = match self {

@@ -3,7 +3,7 @@ use std::hash::Hash;
 use std::iter::FromIterator;
 
 use graph::runtime::{
-    AscHeap, AscPtr, AscType, AscValue, DeterministicHostError, FromAscObj, ToAscObj, TryFromAscObj,
+    AscHeap, AscPtr, AscType, AscValue, DeterministicHostError, FromAscObj, ToAscObj, TryFromAscObj, AscIndexId,
 };
 
 use crate::asc_abi::class::*;
@@ -12,7 +12,9 @@ use crate::asc_abi::class::*;
 ///! Standard Rust types go in `mod.rs` and external types in `external.rs`.
 mod external;
 
-impl<T: AscValue> ToAscObj<TypedArray<T>> for [T] {
+impl<T: AscValue> ToAscObj<TypedArray<T>> for [T]
+    where ArrayBuffer: AscIndexId
+{
     fn to_asc_obj<H: AscHeap>(
         &self,
         heap: &mut H,
@@ -21,7 +23,9 @@ impl<T: AscValue> ToAscObj<TypedArray<T>> for [T] {
     }
 }
 
-impl<T: AscValue> FromAscObj<TypedArray<T>> for Vec<T> {
+impl<T: AscValue> FromAscObj<TypedArray<T>> for Vec<T>
+    where ArrayBuffer: AscIndexId
+{
     fn from_asc_obj<H: AscHeap>(
         typed_array: TypedArray<T>,
         heap: &H,
@@ -30,7 +34,9 @@ impl<T: AscValue> FromAscObj<TypedArray<T>> for Vec<T> {
     }
 }
 
-impl<T: AscValue> FromAscObj<TypedArray<T>> for [T; 32] {
+impl<T: AscValue> FromAscObj<TypedArray<T>> for [T; 32]
+    where ArrayBuffer: AscIndexId
+{
     fn from_asc_obj<H: AscHeap>(
         typed_array: TypedArray<T>,
         heap: &H,
@@ -42,7 +48,9 @@ impl<T: AscValue> FromAscObj<TypedArray<T>> for [T; 32] {
     }
 }
 
-impl<T: AscValue> FromAscObj<TypedArray<T>> for [T; 20] {
+impl<T: AscValue> FromAscObj<TypedArray<T>> for [T; 20]
+    where ArrayBuffer: AscIndexId
+{
     fn from_asc_obj<H: AscHeap>(
         typed_array: TypedArray<T>,
         heap: &H,
@@ -54,7 +62,9 @@ impl<T: AscValue> FromAscObj<TypedArray<T>> for [T; 20] {
     }
 }
 
-impl<T: AscValue> FromAscObj<TypedArray<T>> for [T; 16] {
+impl<T: AscValue> FromAscObj<TypedArray<T>> for [T; 16]
+    where ArrayBuffer: AscIndexId
+{
     fn from_asc_obj<H: AscHeap>(
         typed_array: TypedArray<T>,
         heap: &H,
@@ -66,7 +76,9 @@ impl<T: AscValue> FromAscObj<TypedArray<T>> for [T; 16] {
     }
 }
 
-impl<T: AscValue> FromAscObj<TypedArray<T>> for [T; 4] {
+impl<T: AscValue> FromAscObj<TypedArray<T>> for [T; 4]
+    where ArrayBuffer: AscIndexId
+{
     fn from_asc_obj<H: AscHeap>(
         typed_array: TypedArray<T>,
         heap: &H,
@@ -77,6 +89,8 @@ impl<T: AscValue> FromAscObj<TypedArray<T>> for [T; 4] {
         Ok(array)
     }
 }
+
+impl AscIndexId for EnumPayload {}
 
 impl ToAscObj<AscString> for str {
     fn to_asc_obj<H: AscHeap>(&self, _: &mut H) -> Result<AscString, DeterministicHostError> {
@@ -115,7 +129,9 @@ impl TryFromAscObj<AscString> for String {
     }
 }
 
-impl<C: AscType, T: ToAscObj<C>> ToAscObj<Array<AscPtr<C>>> for [T] {
+impl<C: AscType, T: ToAscObj<C>> ToAscObj<Array<AscPtr<C>>> for [T]
+    where ArrayBuffer: AscIndexId
+{
     fn to_asc_obj<H: AscHeap>(
         &self,
         heap: &mut H,
@@ -126,7 +142,9 @@ impl<C: AscType, T: ToAscObj<C>> ToAscObj<Array<AscPtr<C>>> for [T] {
     }
 }
 
-impl<C: AscType, T: FromAscObj<C>> FromAscObj<Array<AscPtr<C>>> for Vec<T> {
+impl<C: AscType, T: FromAscObj<C>> FromAscObj<Array<AscPtr<C>>> for Vec<T>
+    where ArrayBuffer: AscIndexId
+{
     fn from_asc_obj<H: AscHeap>(
         array: Array<AscPtr<C>>,
         heap: &H,
@@ -139,7 +157,9 @@ impl<C: AscType, T: FromAscObj<C>> FromAscObj<Array<AscPtr<C>>> for Vec<T> {
     }
 }
 
-impl<C: AscType, T: TryFromAscObj<C>> TryFromAscObj<Array<AscPtr<C>>> for Vec<T> {
+impl<C: AscType, T: TryFromAscObj<C>> TryFromAscObj<Array<AscPtr<C>>> for Vec<T>
+    where ArrayBuffer: AscIndexId
+{
     fn try_from_asc_obj<H: AscHeap>(
         array: Array<AscPtr<C>>,
         heap: &H,
@@ -182,6 +202,7 @@ impl<K: AscType, V: AscType, T: ToAscObj<K>, U: ToAscObj<V>> ToAscObj<AscTypedMa
 
 impl<K: AscType, V: AscType, T: TryFromAscObj<K> + Hash + Eq, U: TryFromAscObj<V>>
     TryFromAscObj<AscTypedMap<K, V>> for HashMap<T, U>
+    where ArrayBuffer: AscIndexId
 {
     fn try_from_asc_obj<H: AscHeap>(
         asc_map: AscTypedMap<K, V>,

@@ -1,6 +1,6 @@
 use super::DeterministicHostError;
 
-use super::{AscHeap, AscType, IndexForAscTypeId};
+use super::{AscHeap, AscType, IndexForAscTypeId, AscIndexId};
 use std::fmt;
 use std::marker::PhantomData;
 use std::mem::size_of;
@@ -40,7 +40,7 @@ impl<C> AscPtr<C> {
     }
 }
 
-impl<C: AscType> AscPtr<C> {
+impl<C: AscType + AscIndexId> AscPtr<C> {
     /// Create a pointer that is equivalent to AssemblyScript's `null`.
     #[inline(always)]
     pub fn null() -> Self {
@@ -49,7 +49,10 @@ impl<C: AscType> AscPtr<C> {
 
     /// Read from `self` into the Rust struct `C`.
     pub fn read_ptr<H: AscHeap>(self, heap: &H) -> Result<C, DeterministicHostError> {
+        println!("who's it reading tho: {}", std::any::type_name::<C>());
+        println!("self.0: {}", self.0);
         let bytes = heap.get(self.0, C::asc_size(self, heap)?)?;
+        println!("bytes: {:?}", bytes);
         C::from_asc_bytes(&bytes)
     }
 
@@ -58,14 +61,21 @@ impl<C: AscType> AscPtr<C> {
         asc_obj: C,
         heap: &mut H,
     ) -> Result<AscPtr<C>, DeterministicHostError> {
-        let bytes = asc_obj.to_asc_bytes()?;
+        let bytes = asc_obj.to_asc_bytes()?;// String -> AscString
+        println!("content.len (bytes/asc_obj.to_asc_bytes()): {}", bytes.len());
         let header = if let Some(type_id_index) = C::INDEX_ASC_TYPE_ID {
-            Self::generate_header(heap, type_id_index, bytes.len() as u32)
+            // if bytes.len() == 12 && bytes[0] == 1 && bytes[1] == 2 && bytes[2] == 3 && bytes[3] == 4 {
+            //     Self::generate_header(heap, type_id_index, 4u32)
+            // } else {
+                Self::generate_header(heap, type_id_index, bytes.len() as u32)
+            // }
         } else {
             vec![]
         };
 
         let header_len = header.len() as u32;
+        println!("header: {:?}", header);
+        println!("header_len: {}", header_len);
 
         let heap_ptr = heap.raw_new(&[header, bytes].concat())?;
 
@@ -80,7 +90,7 @@ impl<C: AscType> AscPtr<C> {
     ) -> Vec<u8> {
         let mut header: Vec<u8> = Vec::with_capacity(20);
 
-        let mm_info: [u8; 4] = (0u32).to_le_bytes();
+        let mm_info: [u8; 4] = (28u32).to_le_bytes();
         let gc_info: [u8; 4] = (0u32).to_le_bytes();
         let gc_info2: [u8; 4] = (0u32).to_le_bytes();
         let asc_type_id = heap.asc_type_id(type_id_index);
@@ -126,6 +136,8 @@ impl<C> From<u32> for AscPtr<C> {
         AscPtr::new(ptr)
     }
 }
+
+impl<T> AscIndexId for AscPtr<T> {}
 
 impl<T> AscType for AscPtr<T> {
     fn to_asc_bytes(&self) -> Result<Vec<u8>, DeterministicHostError> {

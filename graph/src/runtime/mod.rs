@@ -14,6 +14,18 @@ use std::convert::TryInto;
 use std::fmt;
 use std::mem::size_of;
 
+/// Marker trait for AssemblyScript types that the id should
+/// be in the header.
+pub trait AscIndexId {
+    /// Constant string with the name of the type in AssemblyScript.
+    /// This is used to get the identifier for the type in memory layout.
+    /// Info about memory layout:
+    /// https://www.assemblyscript.org/memory.html#common-header-layout.
+    /// Info about identifier (`idof<T>`):
+    /// https://www.assemblyscript.org/garbage-collection.html#runtime-interface
+    const INDEX_ASC_TYPE_ID: Option<IndexForAscTypeId> = None;
+}
+
 /// A type that has a direct correspondence to an Asc type.
 ///
 /// This can be derived for structs that are `#[repr(C)]`, contain no padding
@@ -22,15 +34,7 @@ use std::mem::size_of;
 /// Special classes like `ArrayBuffer` use custom impls.
 ///
 /// See https://github.com/graphprotocol/graph-node/issues/607 for more considerations.
-pub trait AscType: Sized {
-    /// Constant string with the name of the type in AssemblyScript.
-    /// This is used to get the identifier for the type in memory layout.
-    /// Info about memory layout:
-    /// https://www.assemblyscript.org/memory.html#common-header-layout.
-    /// Info about identifier (`idof<T>`):
-    /// https://www.assemblyscript.org/garbage-collection.html#runtime-interface
-    const INDEX_ASC_TYPE_ID: Option<IndexForAscTypeId> = None;
-
+pub trait AscType: Sized + AscIndexId {
     /// Transform the Rust representation of this instance into an sequence of
     /// bytes that is precisely the memory layout of a corresponding Asc instance.
     fn to_asc_bytes(&self) -> Result<Vec<u8>, DeterministicHostError>;
@@ -42,14 +46,17 @@ pub trait AscType: Sized {
     fn asc_size<H: AscHeap>(ptr: AscPtr<Self>, heap: &H) -> Result<u32, DeterministicHostError> {
         // If its a class with the common header
         if Self::INDEX_ASC_TYPE_ID.is_some() {
+            println!("ptr.wasm_ptr: {}", ptr.wasm_ptr());
             let header = heap.get(ptr.wasm_ptr() - 20, 20)?;
             let rt_size = header.get(16..20).unwrap(); // safe unwrap because line above already errors on out of bounds access
             Ok(u32::from_le_bytes(rt_size.try_into().unwrap())) // safe unwrap because line above already gets a 4 sized u8 array
         } else {
-            Ok(std::mem::size_of::<Self>() as u32)
+           Ok(std::mem::size_of::<Self>() as u32)
         }
     }
 }
+
+impl<T> AscIndexId for std::marker::PhantomData<T> {}
 
 // Only implemented because of structs that derive AscType and
 // contain fields that are PhantomData.
@@ -93,6 +100,8 @@ impl<T> AscValue for AscPtr<T> {}
 macro_rules! impl_asc_type {
     ($($T:ty),*) => {
         $(
+            impl AscIndexId for $T {}
+
             impl AscType for $T {
                 fn to_asc_bytes(&self) -> Result<Vec<u8>, DeterministicHostError> {
                     Ok(self.to_le_bytes().to_vec())
@@ -123,7 +132,11 @@ impl_asc_type!(u8, u16, u32, u64, i8, i32, i64, f32, f64);
 #[derive(Copy, Clone, Debug)]
 pub enum IndexForAscTypeId {
     String,
+    ArrayBuffer,
+    TypedArray,
 }
+
+impl AscIndexId for IndexForAscTypeId {}
 
 impl AscType for IndexForAscTypeId {
     fn to_asc_bytes(&self) -> Result<Vec<u8>, DeterministicHostError> {
@@ -141,6 +154,7 @@ impl AscType for IndexForAscTypeId {
         let discr = u32::from_le_bytes(u32_bytes);
         match discr {
             0u32 => Ok(Self::String),
+            1u32 => Ok(Self::ArrayBuffer),
             _ => Err(DeterministicHostError(anyhow::anyhow!(
                 "value {} is out of range for {}",
                 discr,

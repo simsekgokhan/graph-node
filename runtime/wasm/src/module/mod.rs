@@ -615,6 +615,8 @@ impl AscHeap for WasmInstanceContext {
         };
 
         let ptr = self.arena_start_ptr as usize;
+        println!("write/alloc bytes: {:?}", bytes);
+        println!("write/alloc ptr: {}", ptr);
 
         // Unwrap: We have just allocated enough space for `bytes`.
         self.memory.write(ptr, bytes).unwrap();
@@ -622,12 +624,51 @@ impl AscHeap for WasmInstanceContext {
         self.arena_start_ptr += size;
         self.arena_free_size -= size;
 
+        // let mut data2 = vec![0; 1000];
+        //
+        // let _ = self.memory.read(0, &mut data2).map_err(|err| {
+        //     println!("err: {}", err);
+        //     DeterministicHostError(anyhow!(
+        //         "Heap access out of bounds. Offset: {} Size: {}",
+        //         0,
+        //         1000
+        //     ))
+        // });
+        // println!("WRITE data2: {:?}", data2);
+
         Ok(ptr as u32)
     }
 
     fn get(&self, offset: u32, size: u32) -> Result<Vec<u8>, DeterministicHostError> {
         let offset = offset as usize;
         let size = size as usize;
+
+        println!("offset: {}", offset);
+        println!("size: {}", size);
+
+        let mut data2 = vec![0; 1000];
+
+        let _ = self.memory.read(0, &mut data2).map_err(|err| {
+            println!("err: {}", err);
+            DeterministicHostError(anyhow!(
+                "Heap access out of bounds. Offset: {} Size: {}",
+                0,
+                1000
+            ))
+        });
+        println!("READ OFFSET ZERO data2: {:?}", data2);
+
+        let mut data2 = vec![0; 1000];
+
+        let _ = self.memory.read(10_000, &mut data2).map_err(|err| {
+            println!("err: {}", err);
+            DeterministicHostError(anyhow!(
+                "Heap access out of bounds. Offset: {} Size: {}",
+                10_000,
+                1000
+            ))
+        });
+        println!("READ OFFSET 10K data2: {:?}", data2);
 
         let mut data = vec![0; size];
 
