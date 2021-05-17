@@ -3,6 +3,7 @@ members = [
     "core",
     "chain/ethereum",
     "chain/arweave",
+    "multicall-example",
     "graphql",
     "mock",
     "node",
@@ -15,7 +16,7 @@ members = [
     "store/postgres",
     "store/test-store",
     "graph",
-    "tests",
+    "tests",    
 ]
 
 
